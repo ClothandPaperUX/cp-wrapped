@@ -1,0 +1,481 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wrapped Poster Maker</title>
+<style>
+  :root {
+    --bg: #f6f1ea; --surface: #fffdf9; --ink: #2b2723; --muted: #6f665c; --line: #e3dacd;
+    --accent: #7a4e2d; --accent-ink: #ffffff; --accent-soft: #f1e6da;
+    --good: #2f6b45; --good-soft: #e5f1e8; --warn: #8a5a00; --warn-soft: #fbf0d9;
+    --bad: #9b2c2c; --bad-soft: #f8e3e1;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #1c1916; --surface: #25211d; --ink: #f1ebe3; --muted: #b3a89b; --line: #3a342e;
+      --accent: #d9a77c; --accent-ink: #1c1916; --accent-soft: #3a2e24;
+      --good: #8fd1a5; --good-soft: #213328; --warn: #f0c46a; --warn-soft: #3a3020;
+      --bad: #f2a29b; --bad-soft: #3d2422;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 32px 16px 64px; }
+  header .brand { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  h1 { font-size: 28px; margin: 4px 0 8px; }
+  .lead { color: var(--muted); margin: 0 0 20px; }
+  nav.steps { display: flex; gap: 8px; margin: 0 0 24px; flex-wrap: wrap; }
+  nav.steps a { padding: 8px 14px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted);
+    text-decoration: none; font-size: 14px; background: var(--surface); }
+  nav.steps a.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 20px; margin: 0 0 16px; }
+  .card h2 { font-size: 18px; margin: 0 0 4px; }
+  .card .hint { color: var(--muted); font-size: 14px; margin: 0 0 12px; }
+  ol.before { margin: 0; padding-left: 20px; font-size: 15px; }
+  ol.before li { margin: 4px 0; }
+  .privacy { display: flex; gap: 10px; align-items: flex-start; background: var(--good-soft); color: var(--good);
+    border-radius: 10px; padding: 12px 14px; font-size: 14px; margin: 0 0 16px; }
+  .drop { border: 2px dashed var(--line); border-radius: 10px; padding: 22px; text-align: center; cursor: pointer;
+    color: var(--muted); transition: border-color .15s, background .15s; }
+  .drop:hover, .drop.over { border-color: var(--accent); background: var(--accent-soft); }
+  .drop strong { color: var(--ink); }
+  .filelist { list-style: none; padding: 0; margin: 10px 0 0; font-size: 14px; }
+  .filelist li { padding: 4px 0; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; gap: 12px; }
+  .filelist li span:last-child { color: var(--muted); white-space: nowrap; }
+  textarea { width: 100%; min-height: 110px; border: 1px solid var(--line); border-radius: 8px; padding: 10px;
+    font: 14px/1.4 ui-monospace, Menlo, Consolas, monospace; background: var(--bg); color: var(--ink); resize: vertical; }
+  .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-top: 8px; font-size: 14px; color: var(--muted); }
+  details summary { cursor: pointer; font-weight: 600; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 12px; }
+  label.field { display: flex; flex-direction: column; gap: 4px; font-size: 14px; color: var(--muted); }
+  input[type=number], input[type=date], input[type=text], select {
+    border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font: inherit; color: var(--ink); background: var(--bg); }
+  button { font: inherit; cursor: pointer; border-radius: 10px; border: 1px solid var(--line); padding: 10px 16px;
+    background: var(--surface); color: var(--ink); }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600;
+    padding: 12px 20px; width: 100%; font-size: 16px; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  .link-btn { background: none; border: none; padding: 0; color: var(--accent); text-decoration: underline; font-size: 14px; }
+  .error { background: var(--bad-soft); color: var(--bad); border-radius: 10px; padding: 12px 14px; margin: 0 0 16px; font-size: 15px; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 8px 0 16px; }
+  .tile { border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+  .tile .n { font-size: 24px; font-weight: 700; }
+  .tile .l { font-size: 13px; color: var(--muted); }
+  ul.checks { list-style: none; padding: 0; margin: 0 0 16px; }
+  ul.checks li { padding: 8px 10px; border-radius: 8px; margin: 6px 0; font-size: 14px; }
+  ul.checks li.ok { background: var(--good-soft); color: var(--good); }
+  ul.checks li.warn { background: var(--warn-soft); color: var(--warn); }
+  ul.checks li.info { background: var(--accent-soft); color: var(--ink); }
+  .downloads { display: flex; flex-direction: column; gap: 8px; }
+  .dl { display: flex; justify-content: space-between; align-items: center; gap: 12px; border: 1px solid var(--line);
+    border-radius: 10px; padding: 10px 12px; }
+  .dl .what { font-size: 14px; }
+  .dl .what b { display: block; font-size: 15px; }
+  .dl .what span { color: var(--muted); }
+  .next { margin-top: 16px; display: block; text-align: center; padding: 12px; border-radius: 10px; background: var(--accent);
+    color: var(--accent-ink); text-decoration: none; font-weight: 600; }
+  table.mini { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
+  table.mini td { padding: 4px 6px; border-bottom: 1px solid var(--line); }
+  table.mini td:last-child { text-align: right; }
+  .hidden { display: none; }
+  @media (max-width: 520px) { .dl { flex-direction: column; align-items: stretch; } }
+
+  .previews { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-top: 12px; }
+  .previews figure { margin: 0; }
+  .previews img { width: 100%; border-radius: 8px; border: 1px solid var(--line); display: block; }
+  .previews figcaption { font-size: 12px; color: var(--muted); margin-top: 4px; text-align: center; }
+  .switches { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; font-size: 14px; }
+  .switches label { display: flex; gap: 8px; align-items: center; }
+  input[type=color] { width: 100%; height: 40px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); padding: 2px; }
+  .progress { height: 10px; background: var(--line); border-radius: 999px; overflow: hidden; margin: 12px 0 4px; }
+  .progress > div { height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+  pre.code { white-space: pre-wrap; word-break: break-all; background: var(--bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: 12px; font: 13px/1.45 ui-monospace, Menlo, Consolas, monospace; margin: 8px 0; }
+  .filepick { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">Cloth &amp; Paper Wrapped</div>
+    <h1>Step 3: Wrapped posters</h1>
+    <p class="lead">Make one shareable poster for each customer with all their highlights, ready for the email and for Instagram Stories.</p>
+  </header>
+
+  <nav class="steps">
+    <a href="index.html">1 · Customer stats</a>
+    <a href="exports.html">2 · Klaviyo &amp; Canva files</a>
+    <a class="on" href="cards.html">3 · Posters</a>
+  </nav>
+
+  <div class="privacy">
+    <span aria-hidden="true">🔒</span>
+    <span>Your files never leave this computer. Posters are drawn inside your browser, and nothing is uploaded anywhere.</span>
+  </div>
+
+  <div id="error" class="error hidden" role="alert"></div>
+
+  <div class="card">
+    <h2>1. Stats file from Step 1</h2>
+    <p class="hint">Use <b>wrapped_top400.csv</b>, the same file you used in Step 2, so the poster names match the Klaviyo import.</p>
+    <div id="fromStep1" class="hidden" style="margin-bottom:12px">
+      <button id="useStep1" type="button">Use the file from Step 1 (<span id="step1Count"></span>)</button>
+    </div>
+    <div id="drop" class="drop" tabindex="0" role="button" aria-label="Choose the stats file">
+      <strong>Drop wrapped_top400.csv here</strong> or click to choose
+      <input id="file" type="file" accept=".csv,text/csv" hidden>
+    </div>
+    <ul id="filelist" class="filelist"></ul>
+  </div>
+
+  <div class="card">
+    <h2>2. Look and feel</h2>
+    <p class="hint">Optional. The built-in design works as is. Changes show in the preview right away.</p>
+    <div class="grid">
+      <label class="field">Background color <input id="cBg" type="color" value="#f3ede4"></label>
+      <label class="field">Text color <input id="cInk" type="color" value="#2b2723"></label>
+      <label class="field">Accent color <input id="cAccent" type="color" value="#7a4e2d"></label>
+    </div>
+    <div class="grid">
+      <label class="field">Logo (PNG, optional)<input id="logo" type="file" accept="image/png,image/jpeg,image/svg+xml"></label>
+      <label class="field">Brand font (.ttf/.otf, optional)<input id="font" type="file" accept=".ttf,.otf,.woff,.woff2"></label>
+      <label class="field">Background image (1080×1920, optional)<input id="bgimg" type="file" accept="image/png,image/jpeg"></label>
+    </div>
+    <div class="switches">
+      <label><input id="showOrders" type="checkbox"> Show "orders placed"</label>
+      <label><input id="showItems" type="checkbox"> Show "items ordered"</label>
+    </div>
+    <div class="grid">
+      <label class="field">Closing line <input id="closing" type="text" value="Thank you for planning with us"></label>
+      <label class="field">Hashtag <input id="hashtag" type="text" value="#ClothAndPaperWrapped"></label>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Preview</h2>
+    <p class="hint">The first few customers. Check that long product names fit.</p>
+    <div id="previews" class="previews"><p class="hint">Add the stats file to see a preview.</p></div>
+  </div>
+
+  <div class="card">
+    <details>
+      <summary>Settings (usually leave as is)</summary>
+      <div class="grid">
+        <label class="field">File name start <input id="prefix" type="text" value="wrapped-2026-"></label>
+      </div>
+      <p class="hint" style="margin-top:8px">Each poster is named this plus its card ID, e.g. <i>wrapped-2026-CPW-014.png</i>.</p>
+    </details>
+  </div>
+
+  <button id="run" class="primary" type="button" disabled>Make all posters</button>
+  <div id="prog" class="hidden"><div class="progress"><div id="bar"></div></div><div id="progText" class="hint"></div></div>
+
+  <section id="results" class="card hidden" style="margin-top:16px" aria-live="polite">
+    <h2>Posters ready</h2>
+    <div class="downloads"><div class="dl"><div class="what"><b id="zipName">wrapped_posters.zip</b><span id="zipInfo"></span></div><button id="dlZip" type="button">Download</button></div></div>
+
+    <h2 style="margin-top:20px">Put them in the email</h2>
+    <ol class="before">
+      <li>Unzip the download.</li>
+      <li>In Shopify: <b>Content → Files → Upload files</b> and select all the posters. Upload them once. Re-uploading a name gives it a new web address.</li>
+      <li>Click any uploaded poster, copy its link, and paste it here:
+        <input id="baseUrl" type="text" placeholder="https://cdn.shopify.com/s/files/…/files/wrapped-2026-CPW-001.png" style="width:100%;margin-top:6px"></li>
+      <li>In the Klaviyo email, add an <b>HTML</b> block and paste this. Each customer automatically sees their own poster:
+        <pre class="code" id="snippet"></pre>
+        <button id="copy" type="button">Copy</button> <span id="copied" class="hint"></span></li>
+      <li>Send yourself a preview as one of the customers (Klaviyo's <i>Preview &amp; test</i>, pick a profile from the list) to check.</li>
+    </ol>
+  </section>
+</div>
+
+<script>
+// ---------- CSV read/write (matches Python's csv module) ----------
+function parseCSV(text) {
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+  const rows = []; let row = [], field = "", inQ = false, i = 0; const n = text.length;
+  while (i < n) {
+    const ch = text[i];
+    if (inQ) {
+      if (ch === '"') { if (text[i + 1] === '"') { field += '"'; i += 2; continue; } inQ = false; i++; continue; }
+      const j = text.indexOf('"', i); if (j === -1) { field += text.slice(i); i = n; continue; }
+      field += text.slice(i, j); i = j; continue;
+    }
+    if (ch === '"' && field === "") { inQ = true; i++; continue; }
+    if (ch === ",") { row.push(field); field = ""; i++; continue; }
+    if (ch === "\r" || ch === "\n") {
+      row.push(field); rows.push(row); row = []; field = "";
+      i += (ch === "\r" && text[i + 1] === "\n") ? 2 : 1; continue;
+    }
+    field += ch; i++;
+  }
+  if (field !== "" || row.length) { row.push(field); rows.push(row); }
+  return rows.filter(r => !(r.length === 1 && r[0] === ""));
+}
+function readDicts(text) {
+  const rows = parseCSV(text); if (!rows.length) return { header: [], dicts: [] };
+  const header = rows[0];
+  const dicts = rows.slice(1).map(r => { const o = {}; header.forEach((h, k) => { o[h] = k < r.length ? r[k] : undefined; }); return o; });
+  return { header, dicts };
+}
+function csvField(v) {
+  const s = v === null || v === undefined ? "" : String(v);
+  return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+function toCSV(header, rows, bom) {
+  const lines = [header.map(csvField).join(",")];
+  for (const r of rows) lines.push((Array.isArray(r) ? r : header.map(h => r[h])).map(csvField).join(","));
+  return (bom ? "﻿" : "") + lines.join("\r\n") + "\r\n";
+}
+function pyFloat(x) { return Number.isInteger(x) ? x.toFixed(1) : String(x); }
+
+
+function clean(v) {
+  v = String(v ?? "").replace(/"/g, "").replace(/“/g, "").replace(/”/g, "").replace(/\n/g, " ").replace(/\r/g, " ");
+  v = v.replace(/®/g, "").replace(/™/g, "");
+  return v.split(/\s+/).filter(Boolean).join(" ");
+}
+const NEEDED = ["rank", "first_name", "wrapped_orders", "wrapped_items", "wrapped_sub_boxes", "wrapped_top_product",
+  "wrapped_go_to_size", "wrapped_busiest_month", "wrapped_first_order_2026"];
+function toPosterData(text) {
+  const { header, dicts } = readDicts(text);
+  const missing = NEEDED.filter(c => !header.includes(c));
+  if (missing.length) throw new Error(`This doesn't look like the Step 1 stats file (missing: ${missing.join(", ")}).`);
+  if (!dicts.length) throw new Error("No customers in this file.");
+  return dicts.map(r => ({
+    card_id: "CPW-" + String(parseInt(r.rank, 10)).padStart(3, "0"),
+    name: clean(r.first_name) || "Friend",
+    orders: clean(r.wrapped_orders), items: clean(r.wrapped_items),
+    boxes: parseInt(r.wrapped_sub_boxes || "0", 10) || 0,
+    product: clean((r.wrapped_top_product || "").split(" | ")[0]),
+    size: clean(r.wrapped_go_to_size), month: clean(r.wrapped_busiest_month), first: clean(r.wrapped_first_order_2026),
+  }));
+}
+
+// ---------- drawing ----------
+const W = 1080, H = 1920, PAD = 80;
+const look = { bg: "#f3ede4", ink: "#2b2723", accent: "#7a4e2d", logo: null, bgImg: null,
+  head: 'Georgia, "Times New Roman", serif', body: '-apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+  showOrders: false, showItems: false, closing: "Thank you for planning with us", hashtag: "#ClothAndPaperWrapped" };
+
+function fit(ctx, text, family, weight, maxSize, minSize, maxWidth, maxLines, maxHeight = Infinity) {
+  // Largest size where the text fits the width on 1 line, or on up to maxLines lines within maxHeight.
+  for (let s = maxSize; s >= minSize; s -= 2) {
+    ctx.font = `${weight} ${s}px ${family}`;
+    if (s * 1.08 <= maxHeight && ctx.measureText(text).width <= maxWidth) return { size: s, lines: [text] };
+    if (maxLines > 1) {
+      const words = text.split(" "), lines = []; let line = "";
+      for (const w of words) { const t = line ? line + " " + w : w; if (!line || ctx.measureText(t).width <= maxWidth) line = t; else { lines.push(line); line = w; } }
+      if (line) lines.push(line);
+      if (lines.length <= maxLines && lines.length * s * 1.08 <= maxHeight && lines.every(l => ctx.measureText(l).width <= maxWidth))
+        return { size: s, lines };
+    }
+  }
+  ctx.font = `${weight} ${minSize}px ${family}`;
+  let t = text; while (t.length > 3 && ctx.measureText(t + "…").width > maxWidth) t = t.slice(0, -1);
+  return { size: minSize, lines: [t === text ? t : t.trimEnd() + "…"] };
+}
+function roundRect(ctx, x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
+function hexA(hex, a) { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`; }
+
+function drawPoster(canvas, d) {
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = look.bg; ctx.fillRect(0, 0, W, H);
+  if (look.bgImg) {
+    const im = look.bgImg, sc = Math.max(W / im.width, H / im.height);
+    ctx.drawImage(im, (W - im.width * sc) / 2, (H - im.height * sc) / 2, im.width * sc, im.height * sc);
+  }
+  ctx.textBaseline = "alphabetic"; ctx.textAlign = "left";
+  // header
+  let y = 150;
+  if (look.logo) {
+    const lh = 90, lw = Math.min(W - 2 * PAD, look.logo.width * lh / look.logo.height);
+    ctx.drawImage(look.logo, PAD, y - 75, lw, lw * look.logo.height / look.logo.width);
+  } else {
+    ctx.fillStyle = look.accent; ctx.font = `600 30px ${look.body}`;
+    if ("letterSpacing" in ctx) ctx.letterSpacing = "6px";
+    ctx.fillText("CLOTH & PAPER", PAD, y);
+    if ("letterSpacing" in ctx) ctx.letterSpacing = "0px";
+  }
+  ctx.fillStyle = look.accent; ctx.font = `600 30px ${look.body}`; ctx.textAlign = "right";
+  ctx.fillText("2026 WRAPPED", W - PAD, 150); ctx.textAlign = "left";
+  ctx.fillStyle = look.ink;
+  const t1 = fit(ctx, d.name + ",", look.head, 700, 132, 64, W - 2 * PAD, 1);
+  ctx.font = `700 ${t1.size}px ${look.head}`; ctx.fillText(t1.lines[0], PAD, 320);
+  ctx.font = `400 64px ${look.head}`; ctx.fillText("here's your 2026.", PAD, 410);
+
+  // stats
+  const stats = [];
+  if (look.showOrders && d.orders) stats.push(["Orders placed", d.orders]);
+  if (look.showItems && d.items) stats.push(["Items ordered", d.items]);
+  if (d.boxes) stats.push(["Intention Boxes received", String(d.boxes)]);
+  if (d.product) stats.push(["Your most-reached-for", d.product]);
+  if (d.size) stats.push(["Your planner size of the year", d.size]);
+  if (d.month) stats.push(["Your busiest planning month", d.month]);
+  if (d.first) stats.push(["It all started on", d.first]);
+  const top = 480, bottom = H - 300, gap = 24, n = Math.max(stats.length, 1);
+  const bh = Math.min(n <= 3 ? 300 : 250, (bottom - top - gap * (n - 1)) / n);
+  const total = n * bh + gap * (n - 1); let by = top + (bottom - top - total) / 2;
+  const inner = W - 2 * PAD - 2 * 44;
+  for (const [label, value] of stats) {
+    ctx.fillStyle = hexA("#ffffff", look.bgImg ? 0.78 : 0.62); roundRect(ctx, PAD, by, W - 2 * PAD, bh, 28); ctx.fill();
+    ctx.fillStyle = look.accent; ctx.fillRect(PAD, by + 28, 8, bh - 56);
+    const labelSize = Math.round(Math.min(32, bh * 0.15));
+    ctx.fillStyle = hexA(look.ink, 0.7); ctx.font = `500 ${labelSize}px ${look.body}`;
+    ctx.fillText(label, PAD + 44, by + 30 + labelSize);
+    const valTop = by + 30 + labelSize + 14, valH = by + bh - 28 - valTop;
+    const f = fit(ctx, value, look.head, 700, Math.round(Math.min(n <= 3 ? 120 : 96, valH * 0.8)), 30, inner, 2, valH);
+    const lh = f.size * 1.08, blockH = lh * f.lines.length;
+    ctx.fillStyle = look.ink; ctx.font = `700 ${f.size}px ${look.head}`;
+    let ly = valTop + (valH - blockH) / 2 + f.size * 0.85;
+    for (const l of f.lines) { ctx.fillText(l, PAD + 44, ly); ly += lh; }
+    by += bh + gap;
+  }
+  // footer
+  ctx.textAlign = "center"; ctx.fillStyle = look.ink;
+  const c = fit(ctx, look.closing, look.head, 400, 60, 34, W - 2 * PAD, 1);
+  ctx.font = `400 ${c.size}px ${look.head}`; ctx.fillText(c.lines[0], W / 2, H - 190);
+  ctx.fillStyle = look.accent; ctx.font = `600 36px ${look.body}`; ctx.fillText(look.hashtag, W / 2, H - 120);
+  ctx.textAlign = "left";
+}
+
+// ---------- ZIP (no compression; PNGs are already compressed) ----------
+const CRC = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+function crc32(u8) { let c = 0xFFFFFFFF; for (let i = 0; i < u8.length; i++) c = CRC[(c ^ u8[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+function makeZip(files) {
+  const enc = new TextEncoder(), parts = [], central = []; let offset = 0;
+  for (const f of files) {
+    const name = enc.encode(f.name), crc = crc32(f.data), size = f.data.length;
+    const lh = new DataView(new ArrayBuffer(30));
+    lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(12, 0x21, true);
+    lh.setUint32(14, crc, true); lh.setUint32(18, size, true); lh.setUint32(22, size, true); lh.setUint16(26, name.length, true);
+    parts.push(new Uint8Array(lh.buffer), name, f.data);
+    const ch = new DataView(new ArrayBuffer(46));
+    ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(14, 0x21, true);
+    ch.setUint32(16, crc, true); ch.setUint32(20, size, true); ch.setUint32(24, size, true); ch.setUint16(28, name.length, true);
+    ch.setUint32(42, offset, true);
+    central.push(new Uint8Array(ch.buffer), name);
+    offset += 30 + name.length + size;
+  }
+  const cdSize = central.reduce((s, a) => s + a.length, 0);
+  const end = new DataView(new ArrayBuffer(22));
+  end.setUint32(0, 0x06054b50, true); end.setUint16(8, files.length, true); end.setUint16(10, files.length, true);
+  end.setUint32(12, cdSize, true); end.setUint32(16, offset, true);
+  return new Blob([...parts, ...central, new Uint8Array(end.buffer)], { type: "application/zip" });
+}
+
+// ---------- page wiring ----------
+const $ = id => document.getElementById(id);
+let data = null, zipBlob = null;
+function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])); }
+function showError(msg) { const e = $("error"); e.textContent = msg; e.classList.toggle("hidden", !msg); }
+function setFile(name, text) {
+  try { data = toPosterData(text); } catch (err) { data = null; $("run").disabled = true; return showError(err.message); }
+  showError("");
+  $("filelist").innerHTML = `<li><span>${escapeHtml(name)}</span><span>${data.length} customers</span></li>`;
+  $("run").disabled = false; $("results").classList.add("hidden"); renderPreviews();
+}
+const toCanvas = () => document.createElement("canvas");
+let previewTimer = null;
+function renderPreviews() {
+  clearTimeout(previewTimer);
+  previewTimer = setTimeout(() => {
+    if (!data) return;
+    // show the first 3, plus the longest product name so text fit is easy to check
+    const picks = data.slice(0, 3);
+    const longest = data.reduce((a, b) => (b.product.length > a.product.length ? b : a), data[0]);
+    if (!picks.includes(longest)) picks.push(longest);
+    $("previews").innerHTML = picks.map(d => {
+      const c = toCanvas(); drawPoster(c, d);
+      return `<figure><img alt="Poster preview for ${escapeHtml(d.card_id)}" src="${c.toDataURL("image/png")}"><figcaption>${escapeHtml(d.card_id)}${d === longest ? " · longest name" : ""}</figcaption></figure>`;
+    }).join("");
+  }, 120);
+}
+function readLook() {
+  look.bg = $("cBg").value; look.ink = $("cInk").value; look.accent = $("cAccent").value;
+  look.showOrders = $("showOrders").checked; look.showItems = $("showItems").checked;
+  look.closing = $("closing").value; look.hashtag = $("hashtag").value;
+  renderPreviews();
+}
+["cBg", "cInk", "cAccent", "showOrders", "showItems", "closing", "hashtag"].forEach(id => $(id).addEventListener("input", readLook));
+function loadImage(file) { return new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = () => rej(new Error("Couldn't read that image.")); im.src = URL.createObjectURL(file); }); }
+$("logo").addEventListener("change", async e => { const f = e.target.files[0]; try { look.logo = f ? await loadImage(f) : null; renderPreviews(); } catch (err) { showError(err.message); } });
+$("bgimg").addEventListener("change", async e => { const f = e.target.files[0]; try { look.bgImg = f ? await loadImage(f) : null; renderPreviews(); } catch (err) { showError(err.message); } });
+$("font").addEventListener("change", async e => {
+  const f = e.target.files[0];
+  if (!f) { look.head = 'Georgia, "Times New Roman", serif'; return renderPreviews(); }
+  try { const face = new FontFace("WrappedBrand", await f.arrayBuffer()); await face.load(); document.fonts.add(face);
+        look.head = 'WrappedBrand, Georgia, serif'; renderPreviews(); }
+  catch (err) { showError("Couldn't load that font file. Try a .ttf or .otf."); }
+});
+
+const drop = $("drop");
+drop.addEventListener("click", () => $("file").click());
+drop.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("file").click(); } });
+drop.addEventListener("dragover", e => { e.preventDefault(); drop.classList.add("over"); });
+drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+drop.addEventListener("drop", async e => { e.preventDefault(); drop.classList.remove("over"); const f = e.dataTransfer.files[0]; if (f) setFile(f.name, await f.text()); });
+$("file").addEventListener("change", async e => { const f = e.target.files[0]; e.target.value = ""; if (f) setFile(f.name, await f.text()); });
+try {
+  const t = sessionStorage.getItem("wrapped_top_csv");
+  if (t) {
+    $("fromStep1").classList.remove("hidden");
+    $("step1Count").textContent = `${Math.max(0, parseCSV(t).length - 1)} customers`;
+    $("useStep1").addEventListener("click", () => setFile(sessionStorage.getItem("wrapped_top_name") || "wrapped_top400.csv", t));
+  }
+} catch (e) { /* storage unavailable: upload the file instead */ }
+
+function prefix() { return ($("prefix").value || "wrapped-2026-").replace(/[^A-Za-z0-9._-]/g, "-"); }
+$("run").addEventListener("click", async () => {
+  if (!data) return;
+  showError(""); $("run").disabled = true; $("prog").classList.remove("hidden"); $("results").classList.add("hidden");
+  try {
+    if (document.fonts && document.fonts.ready) await document.fonts.ready;
+    const c = toCanvas(), files = [];
+    for (let i = 0; i < data.length; i++) {
+      drawPoster(c, data[i]);
+      const blob = await new Promise(r => c.toBlob(r, "image/png"));
+      files.push({ name: `${prefix()}${data[i].card_id}.png`, data: new Uint8Array(await blob.arrayBuffer()) });
+      if (i % 5 === 0 || i === data.length - 1) {
+        $("bar").style.width = `${Math.round(100 * (i + 1) / data.length)}%`;
+        $("progText").textContent = `Drawing poster ${i + 1} of ${data.length}…`;
+        await new Promise(r => setTimeout(r, 0));
+      }
+    }
+    zipBlob = makeZip(files);
+    const mb = (zipBlob.size / 1e6).toFixed(1);
+    $("zipInfo").textContent = `${files.length} posters (PNG, 1080×1920), ${mb} MB`;
+    $("progText").textContent = "Done.";
+    updateSnippet(); $("results").classList.remove("hidden"); $("results").scrollIntoView({ behavior: "smooth", block: "start" });
+  } catch (err) { showError("Something went wrong while drawing: " + (err.message || err)); }
+  finally { $("run").disabled = false; }
+});
+$("dlZip").addEventListener("click", () => {
+  const a = document.createElement("a"); a.href = URL.createObjectURL(zipBlob); a.download = "wrapped_posters.zip";
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+});
+
+function updateSnippet() {
+  const p = prefix();
+  let base = "PASTE-THE-SHOPIFY-FILES-ADDRESS-HERE/";
+  const u = $("baseUrl").value.trim();
+  if (u) { const k = u.lastIndexOf("/files/"); base = k >= 0 ? u.slice(0, k + 7) : u.replace(/[^/]*$/, ""); }
+  const url = `${base}${p}{{ person|lookup:'card_id' }}.png`;
+  $("snippet").textContent =
+`<a href="${url}" target="_blank">
+  <img src="${url}" alt="Your 2026 Cloth & Paper Wrapped" width="600"
+       style="display:block;width:100%;max-width:600px;height:auto;border:0;margin:0 auto;">
+</a>`;
+}
+$("baseUrl").addEventListener("input", updateSnippet);
+$("copy").addEventListener("click", async () => {
+  try { await navigator.clipboard.writeText($("snippet").textContent); $("copied").textContent = "Copied"; }
+  catch (e) { $("copied").textContent = "Select the text above and copy it"; }
+  setTimeout(() => { $("copied").textContent = ""; }, 2500);
+});
+updateSnippet();
+</script>
+</body>
+</html>
