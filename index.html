@@ -87,15 +87,9 @@
 <div class="wrap">
   <header>
     <div class="brand">Cloth &amp; Paper Wrapped</div>
-    <h1>Step 1: Build customer stats</h1>
+    <h1>Build customer stats</h1>
     <p class="lead">Upload the Shopify order exports and get each top customer's Wrapped stats as a spreadsheet (CSV).</p>
   </header>
-
-  <nav class="steps">
-    <a class="on" href="index.html">1 · Customer stats</a>
-    <a href="exports.html">2 · Klaviyo &amp; Canva files</a>
-    <a href="cards.html">3 · Posters</a>
-  </nav>
 
   <div class="privacy">
     <span aria-hidden="true">🔒</span>
@@ -107,6 +101,8 @@
     <ol class="before">
       <li><b>Export orders from Shopify:</b> Orders → filter <i>Date created</i> Jan 1 – Nov 30 → Export → <i>All orders matching your search</i> → CSV. Shopify emails a zip if it's big. Unzip it and keep every file.</li>
       <li><b>Get the wholesale list:</b> Customers → filter by tag <i>wholesale</i> (and <i>faire</i>) → Export. Copy the Email column.</li>
+      <li><b>For "Top category" (optional):</b> Products → Export → <i>All products</i> → CSV.</li>
+      <li><b>For "Loyalty tier" (optional):</b> export customers from Yotpo Loyalty with their email and VIP tier.</li>
       <li>Don't open and re-save the order files in Excel first. Excel changes the dates.</li>
     </ol>
   </div>
@@ -135,11 +131,22 @@
   </div>
 
   <div class="card">
+    <h2>3. Extra files (optional)</h2>
+    <p class="hint">Each one adds a column. Skip either and that column is left blank.</p>
+    <div class="grid">
+      <label class="field"><span><b>Products export</b> from Shopify, for "Top category"</span>
+        <input id="productsFile" type="file" accept=".csv,text/csv"></label>
+      <label class="field"><span><b>Loyalty export</b> from Yotpo (email + VIP tier), for "Loyalty tier"</span>
+        <input id="loyaltyFile" type="file" accept=".csv,text/csv"></label>
+    </div>
+  </div>
+
+  <div class="card">
     <details>
       <summary>Settings (usually leave as is)</summary>
       <div class="grid">
         <label class="field">How many top customers
-          <input id="top" type="number" min="1" value="400"></label>
+          <input id="top" type="number" min="1" value="100"></label>
         <label class="field">Rank customers by
           <select id="rankBy"><option value="spend">Spend (never shown)</option><option value="orders">Number of orders</option></select></label>
         <label class="field">Start date (included)
@@ -166,10 +173,9 @@
     <div class="tiles" id="tiles"></div>
     <ul class="checks" id="checks"></ul>
     <h2 style="margin-top:8px">Download</h2>
-    <p class="hint">The first file is the one you need for Step 2. The other two are for checking.</p>
+    <p class="hint">The first file is the one to share with the team. The other two are for checking.</p>
     <div class="downloads" id="downloads"></div>
     <details style="margin-top:12px"><summary>Why orders were left out</summary><table class="mini" id="reasons"></table></details>
-    <a class="next" href="exports.html">Next: Step 2, make the Klaviyo &amp; Canva files →</a>
   </section>
 </div>
 
@@ -201,7 +207,8 @@ const RULES = {
 
 const OUT_COLS = ["email", "first_name", "rank", "wrapped_orders", "wrapped_items", "wrapped_sub_boxes",
   "wrapped_top_product", "wrapped_go_to_size", "wrapped_busiest_month",
-  "wrapped_first_order_2026", "wrapped_top_percent", "_spend_internal_only"];
+  "wrapped_first_order_2026", "wrapped_top_percent", "_spend_internal_only",
+  "wrapped_customer_since", "wrapped_items_per_order", "wrapped_top_category", "wrapped_loyalty_tier"];
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 
 // ---------- CSV read/write (matches Python's csv module) ----------
@@ -290,8 +297,48 @@ function makeDateParser(tz) {
   return parse;
 }
 
+// ---------- optional extra files ----------
+// Shopify products export -> product title to category (Type, else the last part of Product Category).
+function buildCategoryLookup(text) {
+  const { header, dicts } = readDicts(text);
+  const find = names => header.find(h => names.includes(h.trim().toLowerCase()));
+  const titleCol = find(["title"]);
+  if (!titleCol) throw new Error('The products file doesn\'t look like a Shopify products export (no "Title" column).');
+  const typeCol = find(["type", "custom product type"]), catCol = find(["product category", "standard product type"]);
+  const map = new Map();
+  for (const r of dicts) {
+    const t = (r[titleCol] || "").trim(); if (!t || map.has(t)) continue;
+    let cat = typeCol ? (r[typeCol] || "").trim() : "";
+    if (!cat && catCol) { const pc = (r[catCol] || "").trim(); if (pc) cat = pc.split(">").pop().trim(); }
+    if (cat) map.set(t, cat);
+  }
+  const titles = [...map.keys()].sort((a, b) => b.length - a.length), cache = new Map();
+  return {
+    size: map.size,
+    // a line item is "Product title - Variant"; match the longest product title it starts with
+    lookup(name) {
+      if (cache.has(name)) return cache.get(name);
+      let hit = map.get(name) || "";
+      if (!hit) for (const t of titles) if (name.startsWith(t + " - ")) { hit = map.get(t); break; }
+      cache.set(name, hit); return hit;
+    },
+  };
+}
+// Yotpo (or any) loyalty export -> email to tier. Finds an "email" column and a "tier" column.
+function buildLoyalty(text) {
+  const { header, dicts } = readDicts(text);
+  const lc = header.map(h => h.trim().toLowerCase());
+  const ei = lc.findIndex(h => h.includes("email"));
+  let ti = lc.findIndex(h => h.includes("tier") && !/date|point|spend|progress|next|expir/.test(h));
+  if (ti < 0) ti = lc.findIndex(h => h.includes("vip") && !/date|point|spend|progress|next|expir/.test(h));
+  if (ei < 0 || ti < 0) throw new Error(`The loyalty file needs an email column and a tier column. Its columns are: ${header.join(", ")}`);
+  const map = new Map();
+  for (const r of dicts) { const e = (r[header[ei]] || "").trim().toLowerCase(), t = (r[header[ti]] || "").trim(); if (e && t) map.set(e, t); }
+  return { map, emailCol: header[ei], tierCol: header[ti] };
+}
+
 // ---------- the calculation (port of wrapped_stats.py) ----------
-function buildStats(files, excludeEmails, opts) {
+function buildStats(files, excludeEmails, opts, extras = {}) {
   const parseDate = makeDateParser(opts.tz);
   const startS = opts.start + " 00:00:00", cutoffS = opts.cutoff + " 00:00:00";
   const notes = [];
@@ -340,6 +387,16 @@ function buildStats(files, excludeEmails, opts) {
     }
   }
 
+  const firstEver = new Map(); let pastOrders = 0;
+  for (const o of orders.values()) {
+    if (!o.email || !o.created || o.created >= cutoffS || o.cancelled || tagList(o.tags).includes("test")) continue;
+    if (o.created < startS) pastOrders++;
+    const cur = firstEver.get(o.email); if (!cur || o.created < cur) firstEver.set(o.email, o.created);
+  }
+  const categories = extras.products ? buildCategoryLookup(extras.products) : null;
+  const loyalty = extras.loyalty ? buildLoyalty(extras.loyalty) : null;
+  let catMatched = 0, catMissed = 0; const missedNames = new Map();
+
   const kept = [], excluded = [];
   for (const o of orders.values()) {
     const tags = tagList(o.tags); let reason = null;
@@ -358,7 +415,7 @@ function buildStats(files, excludeEmails, opts) {
   const cust = new Map(); const subReview = []; let unshipped = 0, boxContents = 0;
   for (const o of kept) {
     let c = cust.get(o.email);
-    if (!c) { c = { orders: 0, items: 0, subBoxes: 0, spend: 0, products: new Map(), sizes: new Map(), months: new Map(), first: null, billing: "" };
+    if (!c) { c = { orders: 0, items: 0, subBoxes: 0, spend: 0, products: new Map(), sizes: new Map(), months: new Map(), first: null, billing: "", cats: new Map() };
               cust.set(o.email, c); }
     c.orders += 1;
     bump(c.months, Number(o.created.slice(5, 7)), 1);
@@ -376,6 +433,10 @@ function buildStats(files, excludeEmails, opts) {
       if (isBox(n)) { subQty += q; continue; }
       bump(c.products, splitName(n)[0], q);
       const size = findSize(n); if (size) bump(c.sizes, size, q);
+      if (categories) {
+        const cat = categories.lookup(n);
+        if (cat) { bump(c.cats, cat, q); catMatched += q; } else { catMissed += q; bump(missedNames, splitName(n)[0], q); }
+      }
     }
     if (o.fulfillment === "fulfilled") c.subBoxes += subQty; else if (subQty) unshipped += subQty;
     if (isSubOrder && !subQty) subReview.push([o.name, o.email, o.items.map(x => x[0]).join("; ")]);
@@ -397,20 +458,35 @@ function buildStats(files, excludeEmails, opts) {
       wrapped_first_order_2026: c.first ? `${MONTHS[Number(c.first.slice(5, 7)) - 1]} ${Number(c.first.slice(8, 10))}` : "",
       wrapped_top_percent: total ? Math.max(1, Math.ceil(100 * i / total)) : 100,
       _spend_internal_only: pyFloat(Math.round(c.spend * 100) / 100),
+      wrapped_customer_since: pastOrders && firstEver.has(email) ? firstEver.get(email).slice(0, 4) : "",
+      wrapped_items_per_order: c.orders ? (Math.round(c.items / c.orders * 10) / 10).toFixed(1) : "",
+      wrapped_top_category: categories ? topOf(c.cats) : "",
+      wrapped_loyalty_tier: loyalty ? (loyalty.map.get(email) || "") : "",
     };
   });
 
+  const yr = opts.start.slice(0, 4);
+  const TEAM_COLS = ["Rank", "Email", "First name", "Customer since", `Total orders (${yr})`, "Items per order",
+    "Intention Boxes received", "Top product", "Top category", "Go-to size", `First order of ${yr}`, "Loyalty tier", "Busiest month"];
+  const team = out.map(r => [r.rank, r.email, r.first_name, r.wrapped_customer_since, r.wrapped_orders, r.wrapped_items_per_order,
+    r.wrapped_sub_boxes, (r.wrapped_top_product || "").split(" | ")[0], r.wrapped_top_category, r.wrapped_go_to_size,
+    r.wrapped_first_order_2026, r.wrapped_loyalty_tier, r.wrapped_busiest_month]);
   const reasons = new Map(); for (const [, r] of excluded) bump(reasons, r, 1);
   return {
     files: {
       top: toCSV(OUT_COLS, out, true),
+      team: toCSV(TEAM_COLS, team, true),
       excluded: toCSV(["order", "email", "reason"], excluded.map(([o, r]) => [o.name, o.email, r]), true),
       review: toCSV(["order", "email", "line items"], subReview, true),
     },
     stats: { filesRead: seen.size, ordersRead: orders.size, kept: kept.length, excluded: excluded.length, qualifying: total,
              written: out.length, wholesale: wholesale.size, excludeList: excludeEmails.size, boxContents, unshipped,
              review: subReview.length, fallbacks: parseDate.fallbacks, unreadable: parseDate.unreadable, reasons, notes,
-             top: opts.top, tz: opts.tz },
+             top: opts.top, tz: opts.tz, pastOrders, startYear: yr,
+             categories: categories ? { titles: categories.size, matched: catMatched, missed: catMissed,
+               topMissed: [...missedNames.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(x => x[0]) } : null,
+             loyalty: loyalty ? { emailCol: loyalty.emailCol, tierCol: loyalty.tierCol, rows: loyalty.map.size,
+               matched: out.filter(r => r.wrapped_loyalty_tier).length } : null },
   };
 }
 
@@ -475,9 +551,17 @@ $("run").addEventListener("click", () => {
   if (!opts.start || !opts.cutoff || opts.start >= opts.cutoff) return showError("Check the dates: the start date must be before the cutoff date.");
   $("run").disabled = true; $("run").textContent = "Working…";
   setTimeout(() => {
-    try { lastResult = buildStats(loaded, excludeSet(), opts); renderResults(lastResult); }
-    catch (err) { showError(err.message || String(err)); }
-    finally { renderFiles(); }
+    (async () => {
+      try {
+        const extras = {};
+        const pf = $("productsFile").files[0], lf = $("loyaltyFile").files[0];
+        if (pf) extras.products = await pf.text();
+        if (lf) extras.loyalty = await lf.text();
+        lastResult = buildStats(loaded, excludeSet(), opts, extras); renderResults(lastResult);
+      }
+      catch (err) { showError(err.message || String(err)); }
+      finally { renderFiles(); }
+    })();
   }, 30);
 });
 
@@ -501,12 +585,21 @@ function renderResults(r) {
   if (s.unshipped) checks.push(["info", `${s.unshipped} sub box(es) not shipped yet weren't counted as received.`]);
   if (s.review) checks.push(s.review <= 1000 ? ["ok", `${s.review} subscription add-on orders had no box (normal).`]
                                               : ["warn", `${s.review} subscription orders had no box. That's more than usual; a box may have been renamed.`]);
+  checks.push(s.pastOrders ? ["ok", `"Customer since" used ${s.pastOrders.toLocaleString()} orders from before ${s.startYear}.`]
+                           : ["info", `"Customer since" is blank: the export only has ${s.startYear} orders, so a customer's first-ever order isn't in it.`]);
+  if (s.categories) {
+    const tot = s.categories.matched + s.categories.missed, pct = tot ? Math.round(100 * s.categories.matched / tot) : 0;
+    checks.push(pct >= 90 ? ["ok", `Top category: ${pct}% of items matched a product category.`]
+      : ["warn", `Top category: only ${pct}% of items matched a product category. Unmatched examples: ${s.categories.topMissed.join("; ")}. Older or renamed products may be missing from the products export, or have no Type.`]);
+  } else checks.push(["info", 'No products export added, so "Top category" is blank.']);
+  if (s.loyalty) checks.push(s.loyalty.matched ? ["ok", `Loyalty tier: read "${s.loyalty.tierCol}" by "${s.loyalty.emailCol}"; ${s.loyalty.matched} of ${s.written} top customers have a tier.`]
+                                               : ["warn", `Loyalty tier: none of the top customers' emails were found in the loyalty file (columns used: "${s.loyalty.emailCol}", "${s.loyalty.tierCol}").`]);
+  else checks.push(["info", 'No loyalty export added, so "Loyalty tier" is blank.']);
   if (!s.written) checks.push(["warn", "No customers qualified. Check the dates and the files."]);
   $("checks").innerHTML = checks.map(([k, t]) => `<li class="${k}">${escapeHtml(t)}</li>`).join("");
 
-  const topName = `wrapped_top${s.top}.csv`;
   const dls = [
-    ["top", topName, `Each top customer's stats (${s.written} rows). Use this in Step 2.`],
+    ["team", `wrapped_top${s.top}_for_team.csv`, `The file to hand over: ${s.written} customers, plain column names, no spend.`],
     ["excluded", "excluded_orders.csv", "Every order that was left out, and why."],
     ["review", "sub_box_review.csv", "Subscription orders without a box, for checking."],
   ];
@@ -516,7 +609,6 @@ function renderResults(r) {
   $("reasons").innerHTML = [...s.reasons.entries()].map(([k, v]) => `<tr><td>${escapeHtml(k)}</td><td>${v.toLocaleString()}</td></tr>`).join("")
     || "<tr><td>No orders were left out</td><td></td></tr>";
 
-  try { sessionStorage.setItem("wrapped_top_csv", r.files.top); sessionStorage.setItem("wrapped_top_name", topName); } catch (e) { /* storage unavailable: Step 2 can still take the downloaded file */ }
   $("results").classList.remove("hidden");
   $("results").scrollIntoView({ behavior: "smooth", block: "start" });
 }
